@@ -1,0 +1,110 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Memo {
+  id          String   @id @default(uuid())
+  memoNumber  String   @unique
+  title       String
+  description String?  @db.Text
+  date        DateTime @db.Date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  attachments File[]
+
+  @@index([date])
+  @@map("memos")
+}
+
+model Activity {
+  id          String   @id @default(uuid())
+  date        DateTime @db.Date
+  title       String
+  description String?  @db.Text
+  startTime   String?
+  endTime     String?
+  type        String   @default("general") // general | meeting | task | note
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@map("activities")
+}
+
+model File {
+  id           String   @id @default(uuid())
+  originalName String
+  storedName   String   @unique
+  mimeType     String
+  size         Int
+  path         String
+  linkedDate   DateTime @db.Date
+  memoId       String?
+  memo         Memo?    @relation(fields: [memoId], references: [id], onDelete: Cascade)
+  uploadedAt   DateTime @default(now())
+
+  @@index([linkedDate])
+  @@index([memoId])
+  @@map("files")
+}
+
+model MemoCounter {
+  id    String   @id @default(uuid())
+  date  DateTime @db.Date @unique
+  count Int      @default(0)
+
+  @@index([date])
+  @@map("memo_counters")
+}
+
+model Entry {
+  id          String   @id @default(uuid())
+  slNo        Int      @unique
+  memoNumber  String   @unique
+  senderName  String
+  senderCode  String
+  receiverName String
+  receiverCode String
+  purpose     String
+  description String   @db.Text
+  sendCount   Int      @default(1)
+  fileUrl     String?
+  filePath    String?
+  fileName    String?
+  fileMime    String?
+  date        DateTime @db.Date
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([senderCode])
+  @@index([receiverCode])
+  @@index([slNo])
+  @@map("entries")
+}
+
+model SlCounter {
+  id    String @id @default(uuid())
+  value Int    @unique
+  usedAt DateTime @default(now())
+
+  @@map("sl_counters")
+}
