@@ -522,47 +522,29 @@ SEARCH COMPANY
 const searchCompanies =
   async (req, res) => {
     try {
+
       const q =
         req.query.q || "";
 
       const companies =
-  await prisma.company.findMany({
-    where: {
-      isSystemCompany: true,
-
-      OR: [
-        {
-          name: {
-            contains: search,
-
-            mode:
-              "insensitive",
+        await prisma.company.findMany({
+          where: {
+            name: {
+              contains: q,
+              mode: "insensitive",
+            },
           },
-        },
 
-        {
-          code: {
-            contains: search,
+          take: 10,
+        });
 
-            mode:
-              "insensitive",
-          },
-        },
-      ],
-    },
+      return res.json(
+        companies
+      );
 
-    take: 10,
-
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-      return res.json({
-        companies,
-      });
     } catch (err) {
-      console.error(err);
+
+      console.log(err);
 
       return res
         .status(500)
