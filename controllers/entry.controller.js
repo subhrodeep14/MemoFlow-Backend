@@ -1,7 +1,9 @@
-const {
-  PrismaClient,
-} = require("@prisma/client");
-
+const prisma =
+  require(
+    "../config/prisma"
+  );
+const stream =
+  require("stream");
 const {
   generateCompanyCode,
 } = require("../utils/generateCompanyCode");
@@ -9,8 +11,23 @@ const {
 const generatePurposeCode =
   require("../utils/generatePurposeCode");
 
-const prisma =
-  new PrismaClient();
+const { google } =
+  require("googleapis");
+const auth =
+  new google.auth.GoogleAuth({
+    keyFile:
+      "memoflow-497013-13f10cbb8a61.json",
+
+    scopes: [
+      "https://www.googleapis.com/auth/drive",
+    ],
+  });
+
+const drive =
+  google.drive({
+    version: "v3",
+    auth,
+  });
 
 /*
 ──────────────────────────────────────
@@ -89,6 +106,8 @@ async function getOrCreateCompany(
 
             employeeCode:
               `EMP-${random}`,
+
+            isSystemCompany: false,
           },
         }
       );
@@ -507,40 +526,37 @@ const searchCompanies =
         req.query.q || "";
 
       const companies =
-        await prisma.company.findMany(
-          {
-            where: {
-              OR: [
-                {
-                  name: {
-                    contains:
-                      q,
+  await prisma.company.findMany({
+    where: {
+      isSystemCompany: true,
 
-                    mode:
-                      "insensitive",
-                  },
-                },
+      OR: [
+        {
+          name: {
+            contains: search,
 
-                {
-                  code: {
-                    contains:
-                      q,
+            mode:
+              "insensitive",
+          },
+        },
 
-                    mode:
-                      "insensitive",
-                  },
-                },
-              ],
-            },
+        {
+          code: {
+            contains: search,
 
-            take: 10,
+            mode:
+              "insensitive",
+          },
+        },
+      ],
+    },
 
-            orderBy: {
-              createdAt:
-                "desc",
-            },
-          }
-        );
+    take: 10,
+
+    orderBy: {
+      name: "asc",
+    },
+  });
 
       return res.json({
         companies,
@@ -804,6 +820,7 @@ UPLOAD FILE
 const uploadEntryFile =
   async (req, res) => {
     try {
+
       const { id } =
         req.params;
 
@@ -816,32 +833,90 @@ const uploadEntryFile =
           });
       }
 
+      /*
+      BUFFER STREAM
+      */
+
+      const bufferStream =
+        new stream.PassThrough();
+
+      bufferStream.end(
+        req.file.buffer
+      );
+
+      /*
+      GOOGLE DRIVE UPLOAD
+      */
+
+  const response =
+  await drive.files.create({
+    requestBody: {
+      name:
+        `${Date.now()}-${req.file.originalname}`,
+
+      parents: [
+        process.env.GOOGLE_DRIVE_FOLDER_ID,
+      ],
+    },
+
+    media: {
+      mimeType:
+        req.file.mimetype,
+
+      body:
+        bufferStream,
+    },
+
+    supportsAllDrives: true,
+  });
+
+      /*
+      FILE PUBLIC
+      */
+
+    await drive.permissions.create({
+  fileId: response.data.id,
+
+  requestBody: {
+    role: "reader",
+    type: "anyone",
+  },
+});
+
+      /*
+      PUBLIC URL
+      */
+
+      const fileUrl =
+  `https://drive.google.com/file/d/${response.data.id}/view`;
+      /*
+      UPDATE ENTRY
+      */
+
       const entry =
-        await prisma.entry.update(
-          {
-            where: { id },
+        await prisma.entry.update({
+          where: { id },
 
-            data: {
-              fileUrl:
-                req.file.path,
+          data: {
+            fileUrl:
+              fileUrl,
 
-              fileName:
-                req.file
-                  .originalname,
+            fileName:
+              req.file.originalname,
 
-              fileMime:
-                req.file
-                  .mimetype,
-            },
-          }
-        );
+            fileMime:
+              req.file.mimetype,
+          },
+        });
 
       return res.json({
         success: true,
 
         entry,
       });
+
     } catch (err) {
+
       console.error(err);
 
       return res
@@ -852,7 +927,6 @@ const uploadEntryFile =
         });
     }
   };
-
 /*
 ──────────────────────────────────────
 DELETE FILE

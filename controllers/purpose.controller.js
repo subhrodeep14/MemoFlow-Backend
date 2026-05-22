@@ -1,7 +1,10 @@
-const { PrismaClient } = require('@prisma/client');
+const prisma =
+  require(
+    "../config/prisma"
+  );
 const { z } = require('zod');
 
-const prisma = new PrismaClient();
+
 
 const purposeSchema = z.object({
   name: z.string().min(1, 'Purpose name required').max(100).trim(),

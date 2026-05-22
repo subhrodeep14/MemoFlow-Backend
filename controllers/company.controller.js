@@ -2,14 +2,10 @@
 const crypto =
   require("crypto");
 
-const {
-  PrismaClient,
-} = require(
-  "@prisma/client"
-);
-
 const prisma =
-  new PrismaClient();
+  require(
+    "../config/prisma"
+  );
 
 /*
 ──────────────────────────────────────
@@ -277,6 +273,8 @@ const createCompany =
               adminCode,
 
               employeeCode,
+
+              isSystemCompany: true,
             },
           }
         );
@@ -308,25 +306,26 @@ const getAllCompanies =
     next
   ) => {
     try {
-      const companies =
-        await prisma.company.findMany(
-          {
-            orderBy: {
-              createdAt:
-                "desc",
-            },
+     const companies =
+  await prisma.company.findMany({
+    where: {
+      isSystemCompany: true,
+    },
 
-            include: {
-              _count: {
-                select: {
-                  users: true,
+    orderBy: {
+      createdAt: "desc",
+    },
 
-                  sentEntries: true,
-                },
-              },
-            },
-          }
-        );
+    include: {
+      _count: {
+        select: {
+          users: true,
+
+          sentEntries: true,
+        },
+      },
+    },
+  });
 
       return res.json({
         companies,

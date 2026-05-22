@@ -1,33 +1,32 @@
 // controllers/file.controller.js
 
-const {
-  PrismaClient,
-} = require('@prisma/client');
-
-const multer =
-  require('multer');
+const multer = require("multer");
 
 const {
   CloudinaryStorage,
 } = require(
-  'multer-storage-cloudinary'
+  "multer-storage-cloudinary"
 );
 
 const cloudinary =
-  require('cloudinary').v2;
+  require("cloudinary").v2;
 
 const {
   isDateLocked,
 } = require(
-  '../utils/dateUtils'
+  "../utils/dateUtils"
 );
 
 const prisma =
-  new PrismaClient();
+  require(
+    "../config/prisma"
+  );
 
-/**
- * CLOUDINARY CONFIG
- */
+/*
+──────────────────────────────────────
+CLOUDINARY CONFIG
+──────────────────────────────────────
+*/
 
 cloudinary.config({
   cloud_name:
@@ -43,135 +42,217 @@ cloudinary.config({
       .CLOUDINARY_API_SECRET,
 });
 
-/**
- * STORAGE
- */
+/*
+──────────────────────────────────────
+STORAGE
+IMPORTANT:
+PDF MUST USE image
+OTHER FILES USE raw
+──────────────────────────────────────
+*/
+
 const storage =
   new CloudinaryStorage({
     cloudinary,
 
-    params: {
-      folder:
-        'entry-files',
+    params: async (
+      req,
+      file
+    ) => {
+      const isPdf =
+        file.mimetype ===
+        "application/pdf";
 
-      resource_type:
-        'image',
+      return {
+        folder:
+          "entry-files",
 
-      format: 'pdf',
+        /*
+        IMPORTANT FIX
+        PDF -> image
+        Others -> raw
+        */
 
-      public_id: (
-        req,
-        file
-      ) =>
-        `entry-${Date.now()}`,
+        resource_type:
+          isPdf
+            ? "image"
+            : "raw",
+
+        /*
+        UNIQUE FILE NAME
+        */
+
+        public_id:
+          `entry-${Date.now()}`,
+
+        /*
+        PRESERVE PDF FORMAT
+        */
+
+        format:
+          isPdf
+            ? "pdf"
+            : undefined,
+      };
     },
   });
 
-/**
- * MULTER
- */
+/*
+──────────────────────────────────────
+MULTER
+──────────────────────────────────────
+*/
 
 const upload = multer({
   storage,
 
   limits: {
     fileSize:
-      10 * 1024 * 1024,
+      10 *
+      1024 *
+      1024,
   },
 });
 
-/**
- * UPLOAD FILE
- */
+/*
+──────────────────────────────────────
+UPLOAD FILE
+──────────────────────────────────────
+*/
 
 const uploadFile =
-  async (req, res, next) => {
+  async (
+    req,
+    res,
+    next
+  ) => {
     try {
+      /*
+      FILE CHECK
+      */
+
       if (!req.file) {
-        return res.status(400).json({
-          error:
-            'No file uploaded',
-        });
+        return res
+          .status(400)
+          .json({
+            error:
+              "No file uploaded",
+          });
       }
+
+      /*
+      BODY
+      */
 
       const {
         date,
         memoId,
       } = req.body;
 
+      /*
+      DATE CHECK
+      */
+
       if (!date) {
-        return res.status(400).json({
-          error:
-            'Date required',
-        });
+        return res
+          .status(400)
+          .json({
+            error:
+              "Date required",
+          });
       }
+
+      /*
+      DATE OBJECT
+      */
 
       const entryDate =
         new Date(
           `${date}T12:00:00`
         );
 
+      /*
+      LOCK CHECK
+      */
+
       if (
         isDateLocked(
           entryDate
         )
       ) {
-        return res.status(403).json({
-          error:
-            'Date locked',
-        });
+        return res
+          .status(403)
+          .json({
+            error:
+              "Date locked",
+          });
       }
 
+      /*
+      CREATE FILE RECORD
+      */
+
       const fileRecord =
-        await prisma.file.create({
-          data: {
+        await prisma.file.create(
+          {
+            data: {
+              originalName:
+                req.file
+                  .originalname,
+
+              storedName:
+                req.file
+                  .filename ||
+                req.file
+                  .public_id ||
+                `file-${Date.now()}`,
+
+              mimeType:
+                req.file
+                  .mimetype,
+
+              size:
+                req.file
+                  .size,
+
+              /*
+              CLOUDINARY URL
+              */
+
+              path:
+                req.file
+                  .path,
+
+              linkedDate:
+                entryDate,
+
+              memoId:
+                memoId ||
+                null,
+            },
+          }
+        );
+
+      /*
+      RESPONSE
+      */
+
+      return res
+        .status(201)
+        .json({
+          success: true,
+
+          file: {
+            id:
+              fileRecord.id,
+
+            url:
+              fileRecord.path,
+
             originalName:
-              req.file
-                .originalname,
-
-            // SAVE CLOUDINARY PUBLIC ID
-
-            storedName:
-              req.file
-                .filename ||
-              req.file
-                .public_id ||
-              `file-${Date.now()}`,
-
-            mimeType:
-              req.file
-                .mimetype,
-
-            size:
-              req.file.size,
-
-            // CLOUDINARY URL
-
-            path:
-              req.file.path,
-
-            linkedDate:
-              entryDate,
-
-            memoId:
-              memoId ||
-              null,
+              fileRecord.originalName,
           },
         });
-
-      res.status(201).json({
-        success: true,
-
-        file: {
-          id: fileRecord.id,
-
-          url:
-            fileRecord.path,
-
-          originalName:
-            fileRecord.originalName,
-        },
-      });
     } catch (err) {
       console.log(err);
 
@@ -179,89 +260,124 @@ const uploadFile =
     }
   };
 
-/**
- * VIEW FILE
- */
+/*
+──────────────────────────────────────
+VIEW FILE
+──────────────────────────────────────
+*/
 
-const getFile = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const file =
-      await prisma.file.findUnique({
-        where: {
-          id: req.params.id,
-        },
-      });
+const getFile =
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      const file =
+        await prisma.file.findUnique(
+          {
+            where: {
+              id:
+                req.params.id,
+            },
+          }
+        );
 
-    if (!file) {
-      return res.status(404).json({
-        error:
-          'Not found',
-      });
-    }
+      /*
+      NOT FOUND
+      */
 
-    // FORCE INLINE PDF VIEW
+      if (!file) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "Not found",
+          });
+      }
 
-    const viewUrl =
-      file.path.replace(
-        '/upload/',
-        '/upload/fl_attachment:false/'
+      /*
+      REDIRECT TO CLOUDINARY
+      */
+
+      return res.redirect(
+        file.path
       );
+    } catch (err) {
+      next(err);
+    }
+  };
 
-    return res.redirect(
-      viewUrl
-    );
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * GET FILES BY DATE
- */
+/*
+──────────────────────────────────────
+GET FILES BY DATE
+──────────────────────────────────────
+*/
 
 const getFilesByDate =
-  async (req, res, next) => {
+  async (
+    req,
+    res,
+    next
+  ) => {
     try {
       const { date } =
         req.query;
 
+      /*
+      DATE CHECK
+      */
+
       if (!date) {
-        return res.status(400).json({
-          error:
-            'Date required',
-        });
+        return res
+          .status(400)
+          .json({
+            error:
+              "Date required",
+          });
       }
+
+      /*
+      START
+      */
 
       const start =
         new Date(
           `${date}T00:00:00`
         );
 
+      /*
+      END
+      */
+
       const end =
         new Date(
           `${date}T23:59:59`
         );
 
+      /*
+      FILES
+      */
+
       const files =
-        await prisma.file.findMany({
-          where: {
-            linkedDate: {
-              gte: start,
-              lte: end,
+        await prisma.file.findMany(
+          {
+            where: {
+              linkedDate: {
+                gte: start,
+
+                lte: end,
+              },
             },
-          },
 
-          orderBy: {
-            uploadedAt:
-              'desc',
-          },
-        });
+            orderBy: {
+              uploadedAt:
+                "desc",
+            },
+          }
+        );
 
-      res.json({
+      return res.json({
         files,
       });
     } catch (err) {
@@ -269,58 +385,89 @@ const getFilesByDate =
     }
   };
 
-/**
- * DELETE FILE
- */
+/*
+──────────────────────────────────────
+DELETE FILE
+──────────────────────────────────────
+*/
 
 const deleteFile =
-  async (req, res, next) => {
+  async (
+    req,
+    res,
+    next
+  ) => {
     try {
       const file =
-        await prisma.file.findUnique({
-          where: {
-            id: req.params.id,
-          },
-        });
+        await prisma.file.findUnique(
+          {
+            where: {
+              id:
+                req.params.id,
+            },
+          }
+        );
+
+      /*
+      NOT FOUND
+      */
 
       if (!file) {
-        return res.status(404).json({
-          error:
-            'Not found',
-        });
+        return res
+          .status(404)
+          .json({
+            error:
+              "Not found",
+          });
       }
 
-      /**
-       * DELETE FROM CLOUDINARY
-       */
+      /*
+      DELETE FROM CLOUDINARY
+      */
 
       if (
         file.storedName
       ) {
+        const isPdf =
+          file.mimeType ===
+          "application/pdf";
+
         await cloudinary.uploader.destroy(
-          `secure-caldoc/${file.storedName}`,
+          `entry-files/${file.storedName}`,
           {
+            /*
+            PDF uploaded as image
+            */
+
             resource_type:
-              'raw',
+              isPdf
+                ? "image"
+                : "raw",
           }
         );
       }
 
-      /**
-       * DELETE FROM DB
-       */
+      /*
+      DELETE DB RECORD
+      */
 
-      await prisma.file.delete({
-        where: {
-          id: file.id,
-        },
-      });
+      await prisma.file.delete(
+        {
+          where: {
+            id: file.id,
+          },
+        }
+      );
 
-      res.json({
+      /*
+      RESPONSE
+      */
+
+      return res.json({
         success: true,
 
         message:
-          'Deleted successfully',
+          "Deleted successfully",
       });
     } catch (err) {
       console.log(err);

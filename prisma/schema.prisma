@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -25,23 +26,41 @@ model User {
 
 model Company {
   id              String   @id @default(cuid())
+
   name            String   @unique
+
   code            String   @unique
+
+
+
+  isSystemCompany Boolean  @default(false)
+
   createdAt       DateTime @default(now())
+
   updatedAt       DateTime @updatedAt
+
   adminCode       String   @unique
+
   employeeCode    String   @unique
+
   receivedEntries Entry[]  @relation("ReceiverCompany")
+
   sentEntries     Entry[]  @relation("SenderCompany")
+
   users           User[]
 
   @@index([name])
+
   @@index([code])
+
   @@index([adminCode])
+
   @@index([employeeCode])
+
+  @@index([isSystemCompany])
+
   @@map("companies")
 }
-
 model Purpose {
   id        String   @id @default(cuid())
   name      String   @unique

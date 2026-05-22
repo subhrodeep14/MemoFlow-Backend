@@ -1,8 +1,10 @@
 // prisma/seed.js
-const { PrismaClient } = require('@prisma/client');
+const prisma =
+  require(
+    "../config/prisma"
+  );
 const bcrypt = require('bcryptjs');
 
-const prisma = new PrismaClient();
 
 async function main() {
   const existingAdmin = await prisma.user.findFirst({ where: { role: 'admin' } });
