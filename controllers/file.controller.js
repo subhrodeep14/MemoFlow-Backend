@@ -4,23 +4,17 @@ const multer = require("multer");
 
 const {
   CloudinaryStorage,
-} = require(
-  "multer-storage-cloudinary"
-);
+} = require("multer-storage-cloudinary");
 
 const cloudinary =
   require("cloudinary").v2;
 
 const {
   isDateLocked,
-} = require(
-  "../utils/dateUtils"
-);
+} = require("../utils/dateUtils");
 
 const prisma =
-  require(
-    "../config/prisma"
-  );
+  require("../config/prisma");
 
 /*
 ──────────────────────────────────────
@@ -44,10 +38,10 @@ cloudinary.config({
 
 /*
 ──────────────────────────────────────
-STORAGE
+CLOUDINARY STORAGE
 IMPORTANT:
-PDF MUST USE image
-OTHER FILES USE raw
+UPLOAD BOTH PDF + IMAGES
+AS "image" RESOURCE TYPE
 ──────────────────────────────────────
 */
 
@@ -59,24 +53,17 @@ const storage =
       req,
       file
     ) => {
-      const isPdf =
-        file.mimetype ===
-        "application/pdf";
-
       return {
         folder:
           "entry-files",
 
         /*
         IMPORTANT FIX
-        PDF -> image
-        Others -> raw
+        EVERYTHING AS image
         */
 
         resource_type:
-          isPdf
-            ? "image"
-            : "raw",
+          "image",
 
         /*
         UNIQUE FILE NAME
@@ -84,15 +71,6 @@ const storage =
 
         public_id:
           `entry-${Date.now()}`,
-
-        /*
-        PRESERVE PDF FORMAT
-        */
-
-        format:
-          isPdf
-            ? "pdf"
-            : undefined,
       };
     },
   });
@@ -111,6 +89,42 @@ const upload = multer({
       10 *
       1024 *
       1024,
+  },
+
+  /*
+  FILE VALIDATION
+  */
+
+  fileFilter: (
+    req,
+    file,
+    cb
+  ) => {
+    const allowed =
+      [
+        "application/pdf",
+
+        "image/jpeg",
+
+        "image/png",
+
+        "image/webp",
+      ];
+
+    if (
+      !allowed.includes(
+        file.mimetype
+      )
+    ) {
+      return cb(
+        new Error(
+          "Invalid file type"
+        ),
+        false
+      );
+    }
+
+    cb(null, true);
   },
 });
 
@@ -203,8 +217,10 @@ const uploadFile =
               storedName:
                 req.file
                   .filename ||
+
                 req.file
                   .public_id ||
+
                 `file-${Date.now()}`,
 
               mimeType:
@@ -251,6 +267,9 @@ const uploadFile =
 
             originalName:
               fileRecord.originalName,
+
+            mimeType:
+              fileRecord.mimeType,
           },
         });
     } catch (err) {
@@ -297,13 +316,34 @@ const getFile =
       }
 
       /*
+      PDF FIX
+      PREVENT DOWNLOAD
+      */
+
+      let fileUrl =
+        file.path;
+
+      if (
+        file.mimeType ===
+        "application/pdf"
+      ) {
+        fileUrl =
+          file.path.replace(
+  "/upload/",
+  "/upload/fl_inline/"
+)
+      }
+
+      /*
       REDIRECT TO CLOUDINARY
       */
 
       return res.redirect(
-        file.path
+        fileUrl
       );
     } catch (err) {
+      console.log(err);
+
       next(err);
     }
   };
@@ -378,9 +418,13 @@ const getFilesByDate =
         );
 
       return res.json({
+        success: true,
+
         files,
       });
     } catch (err) {
+      console.log(err);
+
       next(err);
     }
   };
@@ -428,21 +472,11 @@ const deleteFile =
       if (
         file.storedName
       ) {
-        const isPdf =
-          file.mimeType ===
-          "application/pdf";
-
         await cloudinary.uploader.destroy(
           `entry-files/${file.storedName}`,
           {
-            /*
-            PDF uploaded as image
-            */
-
             resource_type:
-              isPdf
-                ? "image"
-                : "raw",
+              "image",
           }
         );
       }
@@ -478,8 +512,12 @@ const deleteFile =
 
 module.exports = {
   upload,
+
   uploadFile,
+
   getFile,
+
   getFilesByDate,
+
   deleteFile,
 };

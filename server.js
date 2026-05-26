@@ -47,10 +47,7 @@ const companyRoutes =
 
 const purposeRoutes =
   require("./routes/purpose.routes");
-const googleAuthRoutes =
-  require(
-    "./routes/googleAuth.routes"
-  );
+
 
 /*
 ──────────────────────────────────────
@@ -285,10 +282,7 @@ app.use(
 ROUTES
 ──────────────────────────────────────
 */
-app.use(
-  "/auth",
-  googleAuthRoutes
-);
+
 app.use(
   "/api/auth",
   authRoutes

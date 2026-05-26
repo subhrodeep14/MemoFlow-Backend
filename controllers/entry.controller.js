@@ -2,33 +2,109 @@ const prisma =
   require(
     "../config/prisma"
   );
-const stream =
-  require("stream");
+
 const {
   generateCompanyCode,
 } = require("../utils/generateCompanyCode");
 
 const generatePurposeCode =
   require("../utils/generatePurposeCode");
+const multer = require("multer");
 
-const { google } =
-  require("googleapis");
-const auth =
-  new google.auth.GoogleAuth({
-    keyFile:
-      "memoflow-497013-13f10cbb8a61.json",
+const {
+  CloudinaryStorage,
+} = require("multer-storage-cloudinary");
 
-    scopes: [
-      "https://www.googleapis.com/auth/drive",
-    ],
+const cloudinary =
+  require("cloudinary").v2;
+
+cloudinary.config({
+  cloud_name:
+    process.env
+      .CLOUDINARY_CLOUD_NAME,
+
+  api_key:
+    process.env
+      .CLOUDINARY_API_KEY,
+
+  api_secret:
+    process.env
+      .CLOUDINARY_API_SECRET,
+});
+
+const storage =
+  new CloudinaryStorage({
+    cloudinary,
+
+    params: async (
+      req,
+      file
+    ) => {
+
+      const isPdf =
+        file.mimetype ===
+        "application/pdf";
+
+      return {
+        folder:
+          "entry-files",
+
+        /*
+        IMPORTANT FIX
+        */
+
+        resource_type:
+          isPdf
+            ? "raw"
+            : "image",
+
+        public_id:
+          `entry-${Date.now()}`,
+      };
+    },
   });
+const upload = multer({
+  storage,
 
-const drive =
-  google.drive({
-    version: "v3",
-    auth,
-  });
+  limits: {
+    fileSize:
+      10 *
+      1024 *
+      1024,
+  },
 
+  fileFilter: (
+    req,
+    file,
+    cb
+  ) => {
+    const allowed =
+      [
+        "application/pdf",
+
+        "image/jpeg",
+
+        "image/png",
+
+        "image/webp",
+      ];
+
+    if (
+      !allowed.includes(
+        file.mimetype
+      )
+    ) {
+      return cb(
+        new Error(
+          "Invalid file type"
+        ),
+        false
+      );
+    }
+
+    cb(null, true);
+  },
+});
 /*
 ──────────────────────────────────────
 HELPERS
@@ -538,9 +614,9 @@ const searchCompanies =
           take: 10,
         });
 
-      return res.json(
-        companies
-      );
+     return res.json({
+  companies,
+});
 
     } catch (err) {
 
@@ -802,9 +878,12 @@ UPLOAD FILE
 const uploadEntryFile =
   async (req, res) => {
     try {
-
       const { id } =
         req.params;
+
+      /*
+      FILE CHECK
+      */
 
       if (!req.file) {
         return res
@@ -816,89 +895,67 @@ const uploadEntryFile =
       }
 
       /*
-      BUFFER STREAM
+      ENTRY CHECK
       */
 
-      const bufferStream =
-        new stream.PassThrough();
+      const existingEntry =
+        await prisma.entry.findUnique(
+          {
+            where: {
+              id,
+            },
+          }
+        );
 
-      bufferStream.end(
-        req.file.buffer
-      );
+      if (!existingEntry) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "Entry not found",
+          });
+      }
 
       /*
-      GOOGLE DRIVE UPLOAD
+      PDF VIEW FIX
       */
 
-  const response =
-  await drive.files.create({
-    requestBody: {
-      name:
-        `${Date.now()}-${req.file.originalname}`,
+    const fileUrl =
+  req.file.path;
+      
 
-      parents: [
-        process.env.GOOGLE_DRIVE_FOLDER_ID,
-      ],
-    },
-
-    media: {
-      mimeType:
-        req.file.mimetype,
-
-      body:
-        bufferStream,
-    },
-
-    supportsAllDrives: true,
-  });
-
-      /*
-      FILE PUBLIC
-      */
-
-    await drive.permissions.create({
-  fileId: response.data.id,
-
-  requestBody: {
-    role: "reader",
-    type: "anyone",
-  },
-});
-
-      /*
-      PUBLIC URL
-      */
-
-      const fileUrl =
-  `https://drive.google.com/file/d/${response.data.id}/view`;
       /*
       UPDATE ENTRY
       */
 
       const entry =
-        await prisma.entry.update({
-          where: { id },
+        await prisma.entry.update(
+          {
+            where: {
+              id,
+            },
 
-          data: {
-            fileUrl:
-              fileUrl,
+            data: {
+              fileUrl:
+                fileUrl,
 
-            fileName:
-              req.file.originalname,
+              fileName:
+                req.file
+                  .originalname,
 
-            fileMime:
-              req.file.mimetype,
-          },
-        });
+              fileMime:
+                req.file
+                  .mimetype,
+            },
+          }
+        );
 
       return res.json({
         success: true,
 
         entry,
       });
-
     } catch (err) {
-
       console.error(err);
 
       return res
@@ -918,22 +975,67 @@ DELETE FILE
 const deleteEntryFile =
   async (req, res) => {
     try {
-      if (
-        req.user.role !==
-        "SUPER_ADMIN"
-      ) {
-        return res
-          .status(403)
-          .json({
-            error:
-              "Only super admin can delete files",
-          });
-      }
-
       const { id } =
         req.params;
 
       const entry =
+        await prisma.entry.findUnique(
+          {
+            where: { id },
+          }
+        );
+
+      if (!entry) {
+        return res
+          .status(404)
+          .json({
+            error:
+              "Entry not found",
+          });
+      }
+
+      /*
+      DELETE FROM CLOUDINARY
+      */
+
+      if (
+        entry.fileUrl
+      ) {
+        try {
+          const parts =
+            entry.fileUrl.split(
+              "/"
+            );
+
+          const fileName =
+            parts[
+              parts.length -
+                1
+            ].split(".")[0];
+
+          await cloudinary.uploader.destroy(
+            `entry-files/${fileName}`,
+            {
+             resource_type:
+  entry.fileMime ===
+  "application/pdf"
+    ? "raw"
+    : "image",
+            }
+          );
+        } catch (cloudErr) {
+          console.log(
+            "Cloudinary delete error:",
+            cloudErr
+          );
+        }
+      }
+
+      /*
+      REMOVE FILE DATA
+      */
+
+      const updatedEntry =
         await prisma.entry.update(
           {
             where: { id },
@@ -951,7 +1053,8 @@ const deleteEntryFile =
       return res.json({
         success: true,
 
-        entry,
+        entry:
+          updatedEntry,
       });
     } catch (err) {
       console.error(err);
@@ -966,6 +1069,8 @@ const deleteEntryFile =
   };
 
 module.exports = {
+   upload,
+
   createEntry,
 
   getEntries,

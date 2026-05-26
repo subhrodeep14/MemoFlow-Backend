@@ -7,6 +7,12 @@ const router =
   express.Router();
 
 const {
+  /*
+  IMPORTANT
+  NEW CLOUDINARY MULTER
+  */
+  upload,
+
   createEntry,
 
   getEntries,
@@ -14,7 +20,9 @@ const {
   searchCompanies,
 
   getEntriesByDate,
+
   searchEntries,
+
   getAvailableSlNumbers,
 
   uploadEntryFile,
@@ -31,11 +39,6 @@ const {
 } = require(
   "../middleware/auth.middleware"
 );
-
-const entryUpload =
-  require(
-    "../middleware/entryUpload"
-  );
 
 const {
   uploadRateLimiter,
@@ -166,6 +169,10 @@ router.get(
 /*
 ──────────────────────────────────────
 UPLOAD FILE
+IMPORTANT:
+NOW USING CLOUDINARY
+UPLOAD MIDDLEWARE
+FROM entry.controller.js
 ──────────────────────────────────────
 */
 
@@ -180,7 +187,7 @@ router.post(
     "EMPLOYEE"
   ),
 
-  entryUpload.single(
+  upload.single(
     "file"
   ),
 
