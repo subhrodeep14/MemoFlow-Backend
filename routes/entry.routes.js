@@ -6,32 +6,24 @@ const express =
 const router =
   express.Router();
 
+
 const {
-  /*
-  IMPORTANT
-  NEW CLOUDINARY MULTER
-  */
   upload,
-
   createEntry,
-
   getEntries,
-
   searchCompanies,
-
   getEntriesByDate,
-
   searchEntries,
-
   getAvailableSlNumbers,
-
   uploadEntryFile,
-
   deleteEntryFile,
+  updateEntry,
+  getRegisterSettings,
+  increaseRegisterRows,
+
 } = require(
   "../controllers/entry.controller"
 );
-
 const {
   authenticate,
 
@@ -92,6 +84,16 @@ router.get(
   ),
 
   getEntries
+);
+
+router.put(
+  "/:id",
+
+  allowRoles(
+    "SUPER_ADMIN"
+  ),
+
+  updateEntry
 );
 
 /*
@@ -209,6 +211,29 @@ router.delete(
 
   deleteEntryFile
 );
+
+router.get(
+  "/register-settings",
+
+  allowRoles(
+    "SUPER_ADMIN",
+    "ADMIN",
+    "EMPLOYEE"
+  ),
+
+  getRegisterSettings
+);
+
+router.post(
+  "/register-settings/increase",
+
+  allowRoles(
+    "SUPER_ADMIN",
+    "ADMIN"
+  ),
+
+  increaseRegisterRows
+); 
 
 module.exports =
   router;

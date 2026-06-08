@@ -68,12 +68,18 @@ const authenticate =
         ACTIVE COMPANY
         */
 
-        let activeCompany =
-          null;
+     const firstCompany =
+  await prisma.company.findFirst({
+    orderBy: {
+      name: "asc",
+    },
+  });
 
-        let activeCompanyId =
-          null;
+let activeCompany =
+  firstCompany || null;
 
+let activeCompanyId =
+  firstCompany?.id || null;
         /*
         SWITCHED COMPANY
         */
@@ -192,57 +198,66 @@ const authenticate =
       DEFAULT ACTIVE COMPANY
       */
 
-      let activeCompanyId =
-        user.companyId;
+      const firstCompany =
+  await prisma.company.findFirst({
+    orderBy: {
+      name: "asc",
+    },
+  });
 
-      let activeCompany =
-        user.company;
+let activeCompanyId =
+  firstCompany?.id;
+
+let activeCompany =
+  firstCompany;
 
       /*
       ADMIN CAN SWITCH
       */
 
-      if (
-        user.role ===
-        "ADMIN"
-      ) {
-        const switchedCompanyId =
-          req.headers[
-            "x-company-id"
-          ];
+    if (user.role === "ADMIN") {
 
-        if (
-          switchedCompanyId
-        ) {
-          const switchedCompany =
-            await prisma.company.findUnique(
-              {
-                where: {
-                  id:
-                    switchedCompanyId,
-                },
+  const firstCompany =
+    await prisma.company.findFirst({
+      orderBy: {
+        name: "asc",
+      },
+    });
 
-                select: {
-                  id: true,
+  activeCompanyId =
+    firstCompany?.id ||
+    user.companyId;
 
-                  name: true,
+  activeCompany =
+    firstCompany ||
+    user.company;
 
-                  code: true,
-                },
-              }
-            );
+  const switchedCompanyId =
+    req.headers["x-company-id"];
 
-          if (
-            switchedCompany
-          ) {
-            activeCompanyId =
-              switchedCompany.id;
+  if (switchedCompanyId) {
 
-            activeCompany =
-              switchedCompany;
-          }
-        }
-      }
+    const switchedCompany =
+      await prisma.company.findUnique({
+        where: {
+          id: switchedCompanyId,
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      });
+
+    if (switchedCompany) {
+      activeCompanyId =
+        switchedCompany.id;
+
+      activeCompany =
+        switchedCompany;
+    }
+  }
+}
 
       /*
       REQUEST USER

@@ -76,17 +76,20 @@ model Purpose {
 
 model Entry {
   id                String   @id @default(cuid())
-  slNo              Int      @unique
-  memoNumber        String   @unique
+  year              Int 
+  slNo              Int     
+  memoNumber        String   
   senderCompanyId   String
   receiverCompanyId String
   purposeId         String
   sendCount         Int      @default(1)
+  memoSuffix        String?   // NEW
   description       String?
   fileUrl           String?
   fileName          String?
   fileMime          String?
-  date              DateTime @db.Date
+  date              DateTime? @db.Date
+  isLegacy          Boolean @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   purpose           Purpose  @relation(fields: [purposeId], references: [id], onDelete: Cascade)
@@ -99,5 +102,22 @@ model Entry {
   @@index([senderCompanyId])
   @@index([receiverCompanyId])
   @@index([purposeId])
+  @@unique([year, slNo, senderCompanyId])
+
+  @@unique([year, memoNumber])
   @@map("entries")
+}
+
+model RegisterSettings {
+  id        String   @id @default(cuid())
+
+  year      Int      @unique
+
+  totalRows Int      @default(100)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@map("register_settings")
 }

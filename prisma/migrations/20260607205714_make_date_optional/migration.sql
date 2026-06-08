@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "entries" ADD COLUMN     "isLegacy" BOOLEAN NOT NULL DEFAULT false,
+ALTER COLUMN "date" DROP NOT NULL;

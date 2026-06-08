@@ -17,7 +17,10 @@ const cookieParser =
 
 const compression =
   require("compression");
-
+const importRoutes =
+  require(
+    "./routes/import.routes"
+  );
 /*
 ──────────────────────────────────────
 ROUTES
@@ -350,6 +353,12 @@ app.get(
     });
   }
 );
+
+app.use(
+  "/api/import",
+  importRoutes
+);
+
 
 /*
 ──────────────────────────────────────

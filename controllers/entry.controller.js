@@ -279,17 +279,50 @@ const createEntry =
   async (req, res) => {
     try {
       const {
-        slNo,
-        receiverCompany,
-        purpose,
-        description,
-        date,
-      } = req.body;
+  slNo,
+  receiverCompany,
+  purpose,
+  description,
+  date,
+  memoSuffix,
+} = req.body;
 
-      /*
-      VALIDATION
-      */
+     /*
+VALIDATION
+*/
 
+if (
+  !slNo ||
+  !receiverCompany ||
+  !purpose ||
+  !date
+) {
+  return res
+    .status(400)
+    .json({
+      error:
+        "Missing required fields",
+    });
+}
+
+const safeDate =
+  new Date(date);
+
+if (
+  isNaN(
+    safeDate.getTime()
+  )
+) {
+  return res
+    .status(400)
+    .json({
+      error:
+        "Invalid date",
+    });
+}
+
+const entryYear =
+  safeDate.getFullYear();
       if (
         !slNo ||
         !receiverCompany ||
@@ -304,38 +337,39 @@ const createEntry =
           });
       }
 
-      /*
-      ACTIVE COMPANY
-      */
+     /*
+ACTIVE COMPANY
+*/
 
-      const activeCompanyId =
-        req.user
-          .activeCompanyId;
+const senderCompanyId =
+  req.user.role ===
+  "EMPLOYEE"
+    ? req.user.companyId
+    : req.user.activeCompanyId;
 
-      if (
-        !activeCompanyId
-      ) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "No active company selected",
-          });
-      }
+if (
+  !senderCompanyId
+) {
+  return res
+    .status(400)
+    .json({
+      error:
+        "No company selected",
+    });
+}
 
-      /*
-      SENDER COMPANY
-      */
+/*
+SENDER COMPANY
+*/
 
-      const sender =
-        await prisma.company.findUnique(
-          {
-            where: {
-              id:
-                activeCompanyId,
-            },
-          }
-        );
+const sender =
+  await prisma.company.findUnique({
+    where: {
+      id:
+        senderCompanyId,
+    },
+  });
+     
 
       if (!sender) {
         return res
@@ -354,12 +388,10 @@ const createEntry =
         await prisma.entry.findFirst(
           {
             where: {
-              slNo:
-                Number(slNo),
-
-              senderCompanyId:
-                sender.id,
-            },
+  year: entryYear,
+  slNo: Number(slNo),
+  senderCompanyId: sender.id,
+},
           }
         );
 
@@ -396,18 +428,18 @@ const createEntry =
       SENDER SENT TO RECEIVER
       */
 
-      const existingCount =
-        await prisma.entry.count(
-          {
-            where: {
-              senderCompanyId:
-                sender.id,
+     const existingCount =
+  await prisma.entry.count({
+    where: {
+      year: entryYear,
 
-              receiverCompanyId:
-                receiver.id,
-            },
-          }
-        );
+      senderCompanyId:
+        sender.id,
+
+      receiverCompanyId:
+        receiver.id,
+    },
+  });
 
       const sendCount =
         existingCount + 1;
@@ -419,33 +451,19 @@ const createEntry =
       03/DHPE/PNBR/TES/04
       */
 
-      const memoNumber =
-        `${String(slNo).padStart(2, "0")}/` +
-        `${sender.code}/` +
-        `${receiver.code}/` +
-        `${purposeData.code}/` +
-        `${String(sendCount).padStart(2, "0")}`;
+     const suffix =
+   memoSuffix?.trim()
+    ?.toUpperCase();
+
+const memoNumber =
+  suffix
+    ? `${String(slNo).padStart(3,"0")}/${sender.code}/${receiver.code}/${purposeData.code}/${suffix}/${String(sendCount).padStart(2,"0")}`
+    : `${String(slNo).padStart(3,"0")}/${sender.code}/${receiver.code}/${purposeData.code}/${String(sendCount).padStart(2,"0")}`;
 
       /*
       SAFE DATE
       */
 
-      const [
-        year,
-        month,
-        day,
-      ] = date
-        .split("-")
-        .map(Number);
-
-      const safeDate =
-        new Date(
-          Date.UTC(
-            year,
-            month - 1,
-            day
-          )
-        );
 
       /*
       CREATE ENTRY
@@ -455,6 +473,7 @@ const createEntry =
         await prisma.entry.create(
           {
             data: {
+              year: entryYear,
               slNo:
                 Number(slNo),
 
@@ -472,6 +491,7 @@ const createEntry =
               sendCount,
 
               description,
+              memoSuffix: suffix || null,
 
               date:
                 safeDate,
@@ -522,48 +542,59 @@ GET ENTRIES
 const getEntries =
   async (req, res) => {
     try {
-      let where = {};
 
+      const selectedYear =
+        Number(
+          req.query.year
+        ) ||
+        new Date().getFullYear();
+
+      let where = {
+        year: selectedYear,
+      };
       /*
       EMPLOYEE
       */
 
-      if (
-        req.user.role ===
-        "EMPLOYEE"
-      ) {
-        where = {
-          senderCompanyId:
-            req.user
-              .companyId,
-        };
-      }
+     if (
+  req.user.role ===
+  "EMPLOYEE"
+) {
+  where = {
+    ...where,
 
-      /*
-      ADMIN / SUPER ADMIN
-      */
+    senderCompanyId:
+      req.user
+        .companyId,
+  };
+}
 
-      else if (
-        req.user
-          .activeCompanyId
-      ) {
-        where = {
-          senderCompanyId:
-            req.user
-              .activeCompanyId,
-        };
-      }
+else if (
+  req.user
+    .activeCompanyId
+) {
+  where = {
+    ...where,
+
+    senderCompanyId:
+      req.user
+        .activeCompanyId,
+  };
+}
 
       const entries =
         await prisma.entry.findMany(
           {
             where,
 
-            orderBy: {
-              createdAt:
-                "desc",
-            },
-
+            orderBy: [
+  {
+    year: "desc",
+  },
+  {
+    slNo: "asc",
+  },
+],
             include: {
               senderCompany: true,
 
@@ -645,8 +676,13 @@ const searchEntries =
           req.query.limit
         ) || 500;
 
-      let where = {};
+    const selectedYear =
+  Number(req.query.year) ||
+  new Date().getFullYear();
 
+let where = {
+  year: selectedYear,
+};
       /*
       EMPLOYEE
       */
@@ -679,10 +715,14 @@ const searchEntries =
 
             take: limit,
 
-            orderBy: {
-              createdAt:
-                "desc",
-            },
+            orderBy: [
+  {
+    year: "desc",
+  },
+  {
+    slNo: "asc",
+  },
+],
 
             include: {
               senderCompany: true,
@@ -721,39 +761,42 @@ AVAILABLE SL
 const getAvailableSlNumbers =
   async (req, res) => {
     try {
-      const activeCompanyId =
-        req.user
-          .activeCompanyId;
+      const companyId =
+  req.user.role ===
+  "EMPLOYEE"
+    ? req.user.companyId
+    : req.user.activeCompanyId;
+
+      const selectedYear =
+        Number(req.query.year) ||
+        new Date().getFullYear();
 
       const entries =
-        await prisma.entry.findMany(
-          {
-            where: {
-              senderCompanyId:
-                activeCompanyId,
-            },
+        await prisma.entry.findMany({
+          where: {
+            year: selectedYear,
 
-            select: {
-              slNo: true,
-            },
-          }
-        );
+            senderCompanyId:
+              companyId,
+          },
+
+          select: {
+            slNo: true,
+          },
+        });
 
       return res.json({
-        used:
-          entries.map(
-            (e) => e.slNo
-          ),
+        used: entries.map(
+          (e) => e.slNo
+        ),
       });
     } catch (err) {
       console.error(err);
 
-      return res
-        .status(500)
-        .json({
-          error:
-            "Failed to fetch serials",
-        });
+      return res.status(500).json({
+        error:
+          "Failed to fetch serials",
+      });
     }
   };
 
@@ -800,8 +843,9 @@ const getEntriesByDate =
         );
 
       let where = {
-        date: targetDate,
-      };
+  year,
+  date: targetDate,
+};
 
       /*
       EMPLOYEE
@@ -972,6 +1016,111 @@ DELETE FILE
 ──────────────────────────────────────
 */
 
+const updateEntry =
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      const {
+        slNo,
+        memoNumber,
+        date,
+        description,
+        receiverCompanyId,
+        purposeId,
+          memoSuffix,
+      } = req.body;
+
+      const entry =
+        await prisma.entry.findUnique({
+          where: { id },
+        });
+
+      if (!entry) {
+        return res.status(404).json({
+          error: "Entry not found",
+        });
+      }
+
+      let safeDate;
+
+      if (date) {
+        safeDate =
+          new Date(date);
+
+        if (
+          isNaN(
+            safeDate.getTime()
+          )
+        ) {
+          return res.status(400).json({
+            error:
+              "Invalid date",
+          });
+        }
+      }
+
+      const updated =
+        await prisma.entry.update({
+          where: {
+            id,
+          },
+
+          data: {
+            slNo:
+              slNo !== undefined
+                ? Number(slNo)
+                : undefined,
+
+            memoNumber:
+              memoNumber ||
+              undefined,
+
+            description,
+
+            receiverCompanyId:
+              receiverCompanyId ||
+              undefined,
+
+            purposeId:
+              purposeId ||
+              undefined,
+
+              memoSuffix:
+              memoSuffix !== undefined
+                ? memoSuffix.trim().toUpperCase() || null
+                : undefined,
+
+            date: safeDate,
+          },
+
+          include: {
+            senderCompany: true,
+            receiverCompany: true,
+            purpose: true,
+          },
+        });
+
+      return res.json({
+        success: true,
+        entry: updated,
+      });
+    } catch (err) {
+      console.error(
+        "UPDATE ENTRY ERROR:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          err.message ||
+          "Failed to update entry",
+      });
+    }
+  };
+
+
 const deleteEntryFile =
   async (req, res) => {
     try {
@@ -1067,9 +1216,151 @@ const deleteEntryFile =
         });
     }
   };
+/*
+──────────────────────────────────────
+GET REGISTER SETTINGS
+──────────────────────────────────────
+*/
+
+const getRegisterSettings =
+  async (req, res) => {
+    try {
+      const selectedYear =
+        Number(req.query.year) ||
+        new Date().getFullYear();
+
+      let settings =
+        await prisma.registerSettings.findUnique({
+          where: {
+            year: selectedYear,
+          },
+        });
+
+      /*
+      AUTO CREATE
+      */
+
+      if (!settings) {
+        settings =
+          await prisma.registerSettings.create({
+            data: {
+              year: selectedYear,
+              totalRows: 100,
+            },
+          });
+      }
+
+      return res.json({
+        year: settings.year,
+        totalRows:
+          settings.totalRows,
+      });
+    } catch (err) {
+      console.error(
+        "GET REGISTER SETTINGS ERROR:",
+        err
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            "Failed to fetch register settings",
+        });
+    }
+  };
+
+  
+
+
+  /*
+──────────────────────────────────────
+INCREASE REGISTER ROWS
+──────────────────────────────────────
+*/
+
+const increaseRegisterRows =
+  async (req, res) => {
+    try {
+      const selectedYear =
+        Number(req.body.year);
+
+      if (!selectedYear) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Year is required",
+          });
+      }
+
+      let settings =
+        await prisma.registerSettings.findUnique({
+          where: {
+            year: selectedYear,
+          },
+        });
+
+      /*
+      CREATE IF NOT EXISTS
+      */
+
+      if (!settings) {
+        settings =
+          await prisma.registerSettings.create({
+            data: {
+              year: selectedYear,
+              totalRows: 120,
+            },
+          });
+
+        return res.json({
+          success: true,
+          totalRows:
+            settings.totalRows,
+        });
+      }
+
+      /*
+      ADD 20 ROWS
+      */
+
+      settings =
+        await prisma.registerSettings.update({
+          where: {
+            year: selectedYear,
+          },
+
+          data: {
+            totalRows: {
+              increment: 20,
+            },
+          },
+        });
+
+      return res.json({
+        success: true,
+
+        totalRows:
+          settings.totalRows,
+      });
+    } catch (err) {
+      console.error(
+        "INCREASE REGISTER ROWS ERROR:",
+        err
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            "Failed to increase rows",
+        });
+    }
+  };
 
 module.exports = {
-   upload,
+  upload,
 
   createEntry,
 
@@ -1082,8 +1373,12 @@ module.exports = {
   searchCompanies,
 
   searchEntries,
-
+  updateEntry,
   uploadEntryFile,
 
   deleteEntryFile,
+
+  getRegisterSettings,
+
+  increaseRegisterRows,
 };
