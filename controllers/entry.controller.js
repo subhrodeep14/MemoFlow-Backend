@@ -1322,7 +1322,7 @@ const increaseRegisterRows =
       }
 
       /*
-      ADD 20 ROWS
+      ADD 50 ROWS
       */
 
       settings =
@@ -1333,7 +1333,7 @@ const increaseRegisterRows =
 
           data: {
             totalRows: {
-              increment: 20,
+              increment: 50,
             },
           },
         });
