@@ -50,7 +50,8 @@ const companyRoutes =
 
 const purposeRoutes =
   require("./routes/purpose.routes");
-
+const analyticsRoutes =
+  require("./routes/analytics.routes");
 
 /*
 ──────────────────────────────────────
@@ -324,6 +325,11 @@ app.use(
 app.use(
   "/api/purposes",
   purposeRoutes
+);
+
+app.use(
+  "/api/analytics",
+  analyticsRoutes
 );
 
 /*
